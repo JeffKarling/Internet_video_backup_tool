@@ -17,6 +17,27 @@ An automated, secure background video downloader that fetches internet videos of
 
 ---
 
+## Installation (via RPM)
+
+You can download the pre-compiled RPM package directly from the **GitHub Actions** run artifacts page, or build it locally.
+
+### 1. Download or Build the RPM
+*   **From GitHub**: Go to the **Actions** tab of the repository, select the latest successful run, and download the `yt-dlp-vpn-automation-rpm` artifact.
+*   **Build Locally**: Compile and package the RPM locally by running:
+    ```bash
+    ./build_rpm.sh
+    ```
+    The generated RPM will be located at `rpmbuild/RPMS/x86_64/`.
+
+### 2. Install the Package
+Install the package using `dnf`. This will automatically resolve and install all system dependencies (including `wireguard-tools`, `systemd`, `acl`, and `nodejs`):
+```bash
+sudo dnf install ./rpmbuild/RPMS/x86_64/yt-dlp-vpn-automation-2.1.2-1.fc42.x86_64.rpm
+```
+*(Adjust the file path if installing a downloaded artifact).*
+
+---
+
 ## Recommended Setup (Automated via `vb_generator`)
 
 The C++ profile generator `vb_generator` is the recommended way to provision, update, or archive configurations.
