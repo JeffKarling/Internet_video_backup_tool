@@ -1,0 +1,15 @@
+{
+  "profiles": [
+    {
+      "name": "profileA",
+      "wireguard": {
+        "private_key": "yAuD...",
+        "address": "10.2.0.2/32, fd00:0002::2/128",
+        "public_key": "8bJp...",
+        "endpoint": "185.120.10.2:51820",
+        "allowed_ips": "0.0.0.0/0, ::/0",
+        "dns": "10.2.0.1, 2a07:b944::2:1"
+      }
+    }
+  ]
+}

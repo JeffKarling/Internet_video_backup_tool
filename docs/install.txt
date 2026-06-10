@@ -1,0 +1,230 @@
+================================================================================
+                YT-DLP VPN AUTOMATION ENGINE - INSTALLATION GUIDE
+================================================================================
+
+Follow these instructions to build, install, and configure the video backup
+system. Only tested on Linux Fedora distribution due to authors Fedora preference.
+
+Projects git hub page provides a ready to use RPM package. Below describes a local
+RPM package generation and install.
+
+--------------------------------------------------------------------------------
+STEP 1: BUILD AND INSTALL THE RPM PACKAGE
+--------------------------------------------------------------------------------
+1. Navigate to the project directory containing 'build_rpm.sh'.
+2. Build the RPM package:
+     ./build_rpm.sh
+3. Install the generated RPM package, this will automatically package the
+   standalone 'yt-dlp' binary and pull in system dependencies like 
+   'wireguard-tools', 'systemd', 'acl', and 'nodejs':
+     sudo dnf install ./rpmbuild/RPMS/x86_64/yt-dlp-vpn-automation-2.1.1-1.fc42.x86_64.rpm
+
+--------------------------------------------------------------------------------
+OPTION A (RECOMMENDED): AUTOMATED PROFILE GENERATION (VB_GENERATOR)
+--------------------------------------------------------------------------------
+This project includes a compiled C++ utility 'vb_generator' that reads a JSON profile
+document, generates all required files, sets up permissions, reloads systemd,
+and enables/starts services.
+
+1. Locate the JSON profile template in your user backup directory:
+     ~/yt-dlp-backup/conf/profile_generator/profiles-template.json
+2. Create a copy named 'profiles.json' in that same folder:
+     cp ~/yt-dlp-backup/conf/profile_generator/profiles-template.json ~/yt-dlp-backup/conf/profile_generator/profiles.json
+3. Edit 'profiles.json' and fill in your actual WireGuard VPN details (private key, address, public key, endpoint, allowed IPs, and DNS server IPs).
+   NOTE: The generator will refuse to run on the default 'profiles-template.json' path or if it detects placeholder values (like "yAuD...", "8bJp...", or "profileA").
+4. Run the profile generator:
+   * Method 1: Using the systemd oneshot service (runs the generator on profiles.json):
+       sudo systemctl start vb-generator.service
+       journalctl -u vb-generator.service -f
+   * Method 2: Running the binary directly:
+       sudo /usr/sbin/vb_generator /var/lib/yt-dlp/conf/profile_generator/profiles.json
+
+5. (Optional) Healing Mode:
+   If a profile configuration already exists on disk but its systemd services are disabled, you can heal them without modifying the files:
+     sudo /usr/sbin/vb_generator --fix /var/lib/yt-dlp/conf/profile_generator/profiles.json
+
+6. (Optional) Deleting/Archiving a Profile:
+   To completely stop a profile's services and archive its configurations, queues, history, and WireGuard key credentials to a backup folder under '/var/lib/yt-dlp/conf/deleted_profiles/':
+     sudo /usr/sbin/vb_generator --delete <profile_name>
+
+If you used Option A, you are fully set up! Skip directly to "STEP 5: VERIFY THE RUNNING SERVICE".
+
+--------------------------------------------------------------------------------
+OPTION B: MANUAL PROFILE CONFIGURATION
+--------------------------------------------------------------------------------
+If you prefer to set up files and enable services manually, follow these steps.
+
+--------------------------------------------------------------------------------
+STEP 2: MANUALLY CONFIGURE VPN AND DNS (SYSTEM LEVEL)
+--------------------------------------------------------------------------------
+Choose an alphanumeric profile name, referred to as 'X' (e.g. 'proton-us').
+NOTE: Due to Linux kernel network interface name limits, 'X' must be 15 
+characters or less (e.g., 'profileA' instead of 'my_very_long_profile_name').
+
+1. Place your VPN provider's WireGuard configuration file in:
+     /etc/wireguard/X.conf
+   
+   Note: Do NOT include a "DNS = ..." option inside the [Interface] section of X.conf. 
+   DNS configuration is decoupled and managed separately at the systemd service layer 
+   via X.resolv (Step 2 below) to prevent host-level DNS leaks.
+
+   
+   Example Content (/etc/wireguard/X.conf):
+   ---------------------------------
+   [Interface]
+   PrivateKey = yAuD... (your private key)
+   Address = 10.2.0.2/32, fd00:0002::2/128
+   
+   [Peer]
+   PublicKey = 8bJp... (your peer public key)
+   Endpoint = 185.120.10.2:51820
+   AllowedIPs = 0.0.0.0/0, ::/0
+   ---------------------------------
+   
+   Set strict permissions:
+     sudo chmod 0600 /etc/wireguard/X.conf
+     sudo chown root:root /etc/wireguard/X.conf
+
+2. Create the DNS resolver config matching the VPN provider's nameservers:
+     /etc/yt-dlp-vpn/X.resolv
+   
+   Example Content:
+   ---------------------------------
+   nameserver 10.2.0.1
+   nameserver 2a07:b944::2:1
+   ---------------------------------
+   
+   Set permissions:
+     sudo chmod 0644 /etc/yt-dlp-vpn/X.resolv
+     sudo chown root:root /etc/yt-dlp-vpn/X.resolv
+
+--------------------------------------------------------------------------------
+STEP 3: CONFIGURE USER QUEUE AND SETTINGS (USER LEVEL)
+--------------------------------------------------------------------------------
+1. Log in to your user session (or log out and back in if already logged in).
+   The directory '~/yt-dlp-backup' will be automatically created.
+2. Navigate to '~/yt-dlp-backup/conf/'.
+3. Create your custom config file named 'X.conf' (e.g. 'proton-us.conf') using
+   the template from '/usr/share/doc/yt-dlp-vpn-automation/yt-dlp-template.conf':
+     cp /usr/share/doc/yt-dlp-vpn-automation/yt-dlp-template.conf ~/yt-dlp-backup/conf/X.conf
+4. Edit '~/yt-dlp-backup/conf/X.conf' and replace 'INSTANCE_NAME' with your
+   chosen profile name 'X'.
+   
+   Example Content (~/yt-dlp-backup/conf/proton-us.conf):
+   ---------------------------------
+   --batch-file /var/lib/yt-dlp/conf/proton-us.batch.txt
+   --download-archive /var/lib/yt-dlp/conf/proton-us.history.txt
+   -o "/var/lib/yt-dlp/videos/%(uploader)s/%(upload_date)s - %(title)s - %(id)s.%(ext)s"
+   
+   -S "res:720,fps:30"
+   --no-playlist
+   --embed-metadata
+   --js-runtimes node
+   ---------------------------------
+
+5. Create your download batch queue file:
+     touch ~/yt-dlp-backup/conf/X.batch.txt
+
+6. (Optional) If you are copying an existing history archive file:
+     cp /path/to/old/archive.txt ~/yt-dlp-backup/conf/X.history.txt
+     chmod 0666 ~/yt-dlp-backup/conf/X.history.txt
+   Note: The history file must be writeable by others (0666) so the sandboxed 
+   ephemeral download service (running as a DynamicUser) can append newly completed downloads.
+
+Note: Node.js (required for YouTube signature decryption) is automatically
+installed by DNF as a package dependency and pre-configured in the template.
+
+--------------------------------------------------------------------------------
+STEP 4: START AND ENABLE THE AUTOMATION ENGINE
+--------------------------------------------------------------------------------
+1. Start and enable the main target:
+     sudo systemctl enable --now yt-dlp.target
+2. Start and enable the path monitor and timer for each profile 'X' you create (e.g. run this for every profile, like 'profileA' or a secondary 'profileB'):
+     sudo systemctl enable --now yt-dlp@X.path yt-dlp@X.timer
+3. Start and enable the automatic nightly update timer:
+     sudo systemctl enable --now yt-dlp-update.timer
+
+
+--------------------------------------------------------------------------------
+STEP 5: VERIFY THE RUNNING SERVICE
+--------------------------------------------------------------------------------
+- Check the status of the path monitor and timer:
+    systemctl status yt-dlp@X.path yt-dlp@X.timer
+- Add a URL to your queue:
+    echo "https://youtu.be/MquOAPeH4_I" >> ~/yt-dlp-backup/conf/X.batch.txt
+- Monitor the download logs:
+    journalctl -u yt-dlp@X.service -f
+
+--------------------------------------------------------------------------------
+STEP 6: KEEPING YT-DLP UPDATED (MAINTENANCE & COEXISTENCE)
+--------------------------------------------------------------------------------
+1. Coexistence:
+   This project installs a standalone 'yt-dlp' binary to:
+     /usr/libexec/yt-dlp-vpn-automation/yt-dlp
+   It does not interfere with or overwrite any other 'yt-dlp' versions you 
+   may have installed (e.g. via DNF to /usr/bin/yt-dlp or via pip).
+
+2. Manual Updates:
+   Updating your system's package manager will not update the automation's 
+   standalone binary. Since video platforms update their platforms frequently, 
+   it is highly recommended to update the automation's binary manually:
+     sudo /usr/libexec/yt-dlp-vpn-automation/yt-dlp -U
+
+3. Automatic Nightly Updates:
+   The package registers a daily update timer. To run the self-updater to nightly 
+   automatically:
+     sudo systemctl enable --now yt-dlp-update.timer
+   To trigger an update manually at any time:
+     sudo systemctl start yt-dlp-update.service
+     journalctl -u yt-dlp-update.service -f
+================================================================================
+
+
+================================================================================
+FAQ / QUESTIONS & ANSWERS
+================================================================================
+Q: Is the VPN connection only active when a video is downloading?
+A: No. Once the VPN namespace service (yt-dlp-vpn@X.service) starts, it remains
+   active in the background (RemainAfterExit=yes). This avoids the slow overhead 
+   of repeatedly establishing the WireGuard tunnel and setting up the namespace 
+   every 2 minutes when the path monitor or timer checks the batch file.
+
+Q: Is it safe to leave the VPN connection open in the background?
+A: Yes, absolutely. When no downloads are running, there are zero processes running 
+   inside the isolated network namespace (netns_X). Any incoming connections or 
+   packets reaching the VPN IP address enter an empty namespace with no listening 
+   sockets, and the kernel instantly drops them. There is zero attack surface.
+
+Q: How do I completely shut down the VPN and remove the network namespace?
+A: You can stop the VPN service manually at any time:
+     sudo systemctl stop yt-dlp-vpn@X.service
+   This deletes the namespace and removes the WireGuard interface from the kernel.
+
+Q: Do I need to manually activate each profile I configure (including the first one)?
+A: Yes. For every profile you create (e.g., 'profileA' or a secondary 'profileB'), you must
+   explicitly start and enable its path monitor and timer with systemd:
+     sudo systemctl enable --now yt-dlp@X.path yt-dlp@X.timer
+   (Replace 'X' with your actual profile name, see section 4 above).
+
+Q: Where does the RPM install the documentation and configuration templates on the host?
+A: All documents and configuration templates are installed under:
+     /usr/share/doc/yt-dlp-vpn-automation/
+   This includes:
+     - install.txt (this installation guide and FAQ)
+     - design.txt (technical architecture and security design)
+     - README.txt (high-level system overview)
+     - yt-dlp-template.conf (starter configuration template)
+
+Q: Why are downloads stored in /var/lib/yt-dlp instead of /home? What if I use Btrfs subvolumes?
+A: Storing downloads in /var/lib/yt-dlp allows the download service to run as a system-level background daemon independent of any specific logged-in user session. In addition, setting up WireGuard network namespaces and interfaces requires administrator privileges (CAP_NET_ADMIN). Running the VPN isolation engine as an unprivileged user-level service (~/.config/systemd/user/) is not practical or supported by the kernel.
+   However, if your system separates system files (e.g. @ subvolume) and user files (e.g. @home subvolume on Btrfs), storing large video files in /var/lib can quickly fill up your system partition.
+   To redirect the storage to your user partition/subvolume without changing the systemd unit files, you can:
+   1. Bind Mount: Create a folder directly under /home (so it is not blocked by systemd's ProtectHome=yes sandbox restriction) and configure read/write permissions for all users:
+        sudo mkdir -p /home/shared-yt-dlp/conf /home/shared-yt-dlp/videos
+        sudo chmod -R 0777 /home/shared-yt-dlp
+        sudo setfacl -d -m u::rwx,g::rwx,o::rwx /home/shared-yt-dlp/conf /home/shared-yt-dlp/videos || true
+        sudo setfacl -m u::rwx,g::rwx,o::rwx /home/shared-yt-dlp/conf /home/shared-yt-dlp/videos || true
+        sudo mount --bind /home/shared-yt-dlp /var/lib/yt-dlp
+      (Add the bind mount "/home/shared-yt-dlp /var/lib/yt-dlp none defaults,bind 0 0" to /etc/fstab to make it persistent across boots).
+   2. Dedicated Btrfs Subvolume: Create a dedicated subvolume (e.g. @yt-dlp) and mount it directly at /var/lib/yt-dlp.
+================================================================================

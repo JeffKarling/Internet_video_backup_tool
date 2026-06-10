@@ -1,0 +1,12 @@
+[Unit]
+Description=Video Backup Profile and Configuration Generator
+ConditionPathExists=/var/lib/yt-dlp/conf/profile_generator/profiles.json
+After=network.target
+
+[Service]
+Type=notify
+ExecStart=/usr/sbin/vb_generator /var/lib/yt-dlp/conf/profile_generator/profiles.json
+RemainAfterExit=no
+
+[Install]
+WantedBy=multi-user.target

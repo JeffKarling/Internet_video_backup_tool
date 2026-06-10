@@ -1,0 +1,27 @@
+[Unit]
+Description=Bind mount yt-dlp backup directories for user UID %i
+After=local-fs.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/bash -c ' \
+  USER_INFO=$(getent passwd %i); \
+  USER_NAME=$(echo "$USER_INFO" | cut -d: -f1); \
+  USER_GID=$(echo "$USER_INFO" | cut -d: -f4); \
+  USER_HOME=$(echo "$USER_INFO" | cut -d: -f6); \
+  if [ -n "$USER_HOME" ] && [ -d "$USER_HOME" ]; then \
+    mkdir -p "$USER_HOME/yt-dlp-backup/conf" "$USER_HOME/yt-dlp-backup/videos"; \
+    chown -R "$USER_NAME:$USER_GID" "$USER_HOME/yt-dlp-backup"; \
+    mount --bind /var/lib/yt-dlp/conf "$USER_HOME/yt-dlp-backup/conf" && \
+    mount --bind /var/lib/yt-dlp/videos "$USER_HOME/yt-dlp-backup/videos"; \
+  fi'
+ExecStop=/usr/bin/bash -c ' \
+  USER_HOME=$(getent passwd %i | cut -d: -f6); \
+  if [ -n "$USER_HOME" ]; then \
+    umount -l "$USER_HOME/yt-dlp-backup/conf" || true; \
+    umount -l "$USER_HOME/yt-dlp-backup/videos" || true; \
+  fi'
+
+[Install]
+WantedBy=multi-user.target

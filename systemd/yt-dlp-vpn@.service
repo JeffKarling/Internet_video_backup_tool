@@ -1,0 +1,17 @@
+[Unit]
+Description=Isolated WireGuard network namespace engine for profile: %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+
+# 1. Start the WireGuard namespace and link via the wrapper script
+ExecStart=/usr/libexec/yt-dlp-vpn-automation/vpn-helper.sh %i up
+
+# Tear down everything cleanly if stopped
+ExecStop=/usr/libexec/yt-dlp-vpn-automation/vpn-helper.sh %i down
+
+[Service]
+TimeoutStopFailureMode=abort

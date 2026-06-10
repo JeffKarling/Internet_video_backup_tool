@@ -1,0 +1,67 @@
+name: Build RPM Package
+
+on:
+  push:
+    branches:
+      - main
+      - next
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+      - next
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: fedora:40
+
+    steps:
+      - name: Install build dependencies
+        run: |
+          dnf install -y git rpm-build gcc-c++ systemd-devel curl findutils Pinentry
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Mark workspace directory as safe for git
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Build RPM package
+        run: |
+          ./build_rpm.sh
+
+      - name: Import GPG Key
+        if: ${{ secrets.GPG_PRIVATE_KEY != '' }}
+        uses: crazy-max/ghaction-import-gpg@v6
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.GPG_PASSPHRASE }}
+
+      - name: Sign RPM Package
+        if: ${{ secrets.GPG_PRIVATE_KEY != '' }}
+        run: |
+          # Configure RPM macros for signing
+          echo "%_signature gpg" > ~/.rpmmacros
+          echo "%_gpg_name E3F3D8805CCE6E3B" >> ~/.rpmmacros
+          echo "%__gpg_sign_cmd %{__gpg} gpg --batch --no-verbose --no-armor --pinentry-mode loopback --passphrase-file /tmp/gpg-passphrase -sbo %{__signature_filename} %{__plaintext_filename}" >> ~/.rpmmacros
+          
+          # Write passphrase to a temp file for rpmsign to use
+          echo "${{ secrets.GPG_PASSPHRASE }}" > /tmp/gpg-passphrase
+          chmod 600 /tmp/gpg-passphrase
+          
+          # Sign the built RPMs
+          rpmsign --addsign rpmbuild/RPMS/x86_64/*.rpm
+          
+          # Clean up passphrase file
+          rm -f /tmp/gpg-passphrase
+
+      - name: Upload RPM Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: yt-dlp-vpn-automation-rpm
+          path: rpmbuild/RPMS/x86_64/*.rpm

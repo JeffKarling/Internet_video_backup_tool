@@ -1,0 +1,52 @@
+[Unit]
+Description=Download videos using yt-dlp locked inside WireGuard Namespace for profile %i
+Requires=yt-dlp-vpn@%i.service
+After=yt-dlp-vpn@%i.service
+
+[Service]
+Type=exec
+Environment=HOME=/var/lib/yt-dlp
+
+# 1. Native System-Level Network Isolation
+NetworkNamespacePath=/run/netns/netns_%i
+BindReadOnlyPaths=/etc/yt-dlp-vpn/%i.resolv:/etc/resolv.conf
+
+# 2. Perfect Identity Sandboxing
+DynamicUser=yes
+User=ytdlp-runner
+
+# 3. Execution Paths (Targeting your compiled standalone binary)
+ExecStart=/usr/libexec/yt-dlp-vpn-automation/yt-dlp --config /var/lib/yt-dlp/conf/%i.conf
+WorkingDirectory=/var/lib/yt-dlp/videos
+Slice=background.slice
+
+# 4. Strict Filesystem Restrictions
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+UMask=0002
+ReadWritePaths=/var/lib/yt-dlp
+
+# 5. Kernel, Hostname & System Hardening
+NoNewPrivileges=true
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+MemoryDenyWriteExecute=no
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+ProtectHostname=yes
+CapabilityBoundingSet=
+LockPersonality=yes
+RemoveIPC=yes
+PrivateMounts=yes
+
+# 6. Protocol & System Call Isolation
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+SystemCallArchitectures=native
+SystemCallFilter=@system-service @network-io pkey_alloc pkey_free
+SystemCallFilter=~@privileged @resources @clock @cpu-emulation @debug @keyring @module @mount @obsolete @raw-io @reboot @swap
+
+TimeoutStopFailureMode=abort

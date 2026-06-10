@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily update timer for yt-dlp to nightly
+PartOf=yt-dlp.target
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=1h
+Persistent=true
+Unit=yt-dlp-update.service
+
+[Install]
+WantedBy=yt-dlp.target

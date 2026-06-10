@@ -1,0 +1,12 @@
+[Unit]
+Description=yt-dlp timer for profile %i
+PartOf=yt-dlp.target
+
+[Timer]
+OnStartupSec=25sec
+OnUnitInactiveSec=2min
+RandomizedDelaySec=15s
+Unit=yt-dlp@%i.service
+
+[Install]
+WantedBy=yt-dlp.target

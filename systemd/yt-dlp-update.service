@@ -1,0 +1,25 @@
+[Unit]
+Description=Update the standalone yt-dlp binary to nightly
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/yt-dlp-vpn-automation/yt-dlp --update-to nightly
+ProtectSystem=strict
+ReadWritePaths=/usr/libexec/yt-dlp-vpn-automation
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+CapabilityBoundingSet=
+NoNewPrivileges=true
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+MemoryDenyWriteExecute=no
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+ProtectHostname=yes
+LockPersonality=yes
+RemoveIPC=yes
+PrivateMounts=yes

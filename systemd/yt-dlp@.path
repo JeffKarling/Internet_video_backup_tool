@@ -1,0 +1,10 @@
+[Unit]
+Description=Monitor the yt-dlp batch file for changes for profile %i
+PartOf=yt-dlp.target
+
+[Path]
+PathModified=/var/lib/yt-dlp/conf/%i.batch.txt
+Unit=yt-dlp@%i.service
+
+[Install]
+WantedBy=yt-dlp.target

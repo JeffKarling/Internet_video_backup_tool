@@ -1,0 +1,133 @@
+================================================================================
+                   YT-DLP VPN AUTOMATION ENGINE - DESIGN
+================================================================================
+
+This document describes the technical architecture and security design of the
+background video downloader.
+
+The system is designed around a multi-configuration, simultaneous download
+architecture. Each download process is configured independently with a dedicated
+vpn tunnel and yt-dlp conf settings. Throughout this document, the variable 'X'
+represents an individual configuration profile (e.g., 'proton-us' or 'mullvad-se').
+NOTE: The profile name 'X' must be 15 characters or less due to Linux kernel 
+network interface name length limits (IFNAMSIZ). Multiple yt-dlp process 
+instances of 'X' can run simultaneously, each isolated within its own network 
+namespace using its own VPN connection.
+
+--------------------------------------------------------------------------------
+1. NETWORK ISOLATION DESIGN
+--------------------------------------------------------------------------------
+To completely prevent the downloader process from accessing the host network
+or leaking your home IP address:
+- VPN Namespace (netns_X): A dedicated, isolated network namespace is created for
+  each yt-dlp instance 'X' by the systemd service 'yt-dlp-vpn@X.service'.
+- WireGuard Tunnel (wg-quick): Inside this namespace, 'wg-quick' initializes the
+  tunnel using '/etc/wireguard/X.conf'. The default gateway inside the namespace
+  is routed exclusively through this tunnel. This means each yt-dlp process runs
+   uses its "own" wg network device.
+- DNS Leak Protection: The download process runner 'yt-dlp@X.service' executes inside
+  this namespace. Its private '/etc/resolv.conf' is bind-mounted directly to the
+  user-provided nameserver configuration at '/etc/yt-dlp-vpn/X.resolv'.
+- Loopback Isolation (Disabled Localhost): While Linux automatically provisions a 
+  private loopback interface ('lo') inside any new network namespace, it is left 
+  in the 'DOWN' (inactive) state. Because 'yt-dlp' and Node.js do not require 
+  loopback communication, keeping 'lo' disabled provides an extra security layer,
+  preventing any local socket binding or loopback-based attacks.
+
+--------------------------------------------------------------------------------
+2. PROCESS SECURITY & SANDBOXING (CONTAINER SHIELDING)
+--------------------------------------------------------------------------------
+The downloader runs under systemd with strict container-like sandboxing:
+- DynamicUser=yes: Runs as a transient, non-privileged user ('ytdlp-runner')
+  without a permanent UID/GID.
+- CapabilityBoundingSet=: Empty. Drops all Linux capabilities (e.g., no root
+  actions).
+- RestrictNamespaces=yes: Blocks the process from creating new namespaces.
+- LockPersonality=yes: Locks down system execution personality.
+- ProtectHome=yes & ProtectSystem=strict: Home folders and host directories
+  are invisible/read-only.
+- MemoryDenyWriteExecute=no: Allowed specifically to accommodate Node.js's V8 JIT
+  engine for signature decryption scripts.
+
+--------------------------------------------------------------------------------
+3. MULTI-USER BRIDGE DESIGN (DYNAMIC USER MOUNTS)
+--------------------------------------------------------------------------------
+To make the system generic and available to any logged-in user:
+- Shared Directory: All configuration, queues, and videos are stored in
+  '/var/lib/yt-dlp/conf' and '/var/lib/yt-dlp/videos' with 0777 permissions and
+  default ACLs ('setfacl') so they are read/writeable by any local user.
+- PAM Session Hook: In '/usr/lib/systemd/system/user@.service.d/', project override
+  the user manager service to start 'yt-dlp-user-mount@<uid>.service' on login.
+- Dynamic Bind Mounts: On user session startup (root-level), this mount service
+  resolves the user's home folder, creates '~/yt-dlp-backup/{conf,videos}',
+  chowns them to the logging-in user, and bind-mounts the shared storage directories.
+- Lazy Unmounting: On logout, systemd stops the mount service, performing a
+  clean lazy unmount ('umount -l') to prevent stale mounts.
+- Session Independence: The 'yt-dlp@X.service' runs as a system-level service 
+  independent of active user logins. If a user adds a URL to the batch queue 
+  while logged in and then logs out, the background service will continue 
+  running and downloading the video in the background.
+
+--------------------------------------------------------------------------------
+4. INDEPENDENT BINARY & COEXISTENCE DESIGN
+--------------------------------------------------------------------------------
+This project downloads, packages and installs yt-dlp official 'yt-dlp' release binary
+directly to '/usr/libexec/yt-dlp-vpn-automation/yt-dlp' (rather than using any custom 
+or project-compiled executable).
+- Coexistence: If the user already has a system-wide 'yt-dlp' package installed 
+  (e.g., via DNF to '/usr/bin/yt-dlp' or via pip), this project does not 
+  interfere with, overwrite, or break that installation. The automation 
+  systemd service executes projects dedicated binary path exclusively.
+- Package Separation: Updating the dnf installed system 'yt-dlp' package will not
+  update the standalone binary used by this automation.
+- Manual Update Recommendation: Because internet video hosting platforms frequently
+  change their interfaces, you can manually update the standalone binary:
+    sudo /usr/libexec/yt-dlp-vpn-automation/yt-dlp -U
+- Automated Nightly Updates: To ensure zero-maintenance compatibility, the system
+  includes a systemd timer 'yt-dlp-update.timer' that triggers 'yt-dlp-update.service'
+  daily. This runs the self-updater and upgrades the standalone binary directly to
+  the 'nightly' channel on the host network.
+
+--------------------------------------------------------------------------------
+5. EFFICIENT SHARED CACHE REUSE
+--------------------------------------------------------------------------------
+To optimize performance and minimize redundant network operations across concurrent
+downloads:
+- Shared Cache Directory: The systemd service configures a shared cache location
+  ('/var/lib/yt-dlp/.cache') by setting 'Environment=HOME=/var/lib/yt-dlp'.
+- Instant Decryption Key Reuse: YouTube periodically updates its player signature
+  decryption algorithm. When one profile downloads a video, it caches the resolved
+  decryption rules. Subsequent downloads by other concurrent profiles immediately
+  reuse this cached data, speeding up startup times and reducing redundant requests.
+- Thread-Safe Atomic Writes: yt-dlp natively updates its JSON cache files using
+  temporary file staging and atomic renames, preventing corruption from concurrent
+  read/write operations.
+- Shared Identity Access: Because all service template instances utilize the same
+  dynamic user name ('User=ytdlp-runner'), systemd assigns them the same runtime
+  UID. This allows them to read and write to the shared cache cleanly without any
+  file ownership conflicts.
+
+--------------------------------------------------------------------------------
+6. AUTOMATED CONFIGURATION GENERATION (VB_GENERATOR)
+--------------------------------------------------------------------------------
+To simplify the provisioning, healing, and deletion of profile configurations:
+- C++ Binary (vb_generator): Compiled during RPM build linking directly to
+  libsystemd, the binary parses JSON configurations via systemd's C JSON library
+  ('sd-json.h') and notifies systemd of its status via 'sd-daemon.h'.
+- Asynchronous Event Loop (sd-event & sd-bus): The generator uses a native
+  epoll-based event loop. It attaches the system bus and schedules asynchronous
+  D-Bus method calls ('sd_bus_call_method_async') in a chained sequence:
+    1. Reload: Triggers systemd daemon-reload.
+    2. EnableUnitFiles: Registers path and timer systemd units persistently.
+    3. StartUnit: Activates the path and timer unit instances.
+- Error and Timeout Handling: If any async call fails, the generator captures the
+  error, logs it via 'sd-journal.h', notifies the service manager of the failure state
+  (e.g., 'BUSERROR=org.freedesktop.DBus.Error.TimedOut' or 'ERRNO=2'), and exits.
+- Systemd Startup Notification: In creation and healing modes, the generator
+  notifies the manager with state strings ('STATUS=Profile X was successfully created
+  and systemd enabled'), allowing it to run within a 'Type=notify' oneshot unit
+  ('vb-generator.service').
+- Safe Archival Deletion: To prevent the loss of credentials/history, '--delete'
+  stops/disables systemd units and moves all target configuration, queue, history,
+  and WireGuard config files (preserving keys) to '/var/lib/yt-dlp/conf/deleted_profiles/'.
+================================================================================
