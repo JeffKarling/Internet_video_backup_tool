@@ -17,7 +17,7 @@ STEP 1: BUILD AND INSTALL THE RPM PACKAGE
 3. Install the generated RPM package, this will automatically package the
    standalone 'yt-dlp' binary and pull in system dependencies like 
    'wireguard-tools', 'systemd', 'acl', and 'nodejs':
-     sudo dnf install ./rpmbuild/RPMS/x86_64/yt-dlp-vpn-automation-2.1.1-1.fc42.x86_64.rpm
+     sudo dnf install ./rpmbuild/RPMS/x86_64/yt-dlp-vpn-automation-2.1.2-1.fc42.x86_64.rpm
 
 --------------------------------------------------------------------------------
 OPTION A (RECOMMENDED): AUTOMATED PROFILE GENERATION (VB_GENERATOR)

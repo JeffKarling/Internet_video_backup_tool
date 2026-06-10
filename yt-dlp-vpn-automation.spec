@@ -1,5 +1,5 @@
 Name:           yt-dlp-vpn-automation
-Version:        2.1.1
+Version:        2.1.2
 Release:        1%{?dist}
 Summary:        Automated generic multi-VPN yt-dlp backup system
 License:        MIT-0

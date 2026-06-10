@@ -9,11 +9,11 @@ An automated, secure background video downloader that fetches internet videos of
 
 ## Key Features
 
-*   **🔒 Secure Network Isolation**: The `yt-dlp` download process executes inside an isolated network namespace (`netns_X`) with all traffic routed exclusively through a WireGuard VPN tunnel. Host IP exposure and DNS leaks are mathematically impossible.
-*   **🛡️ Ephemeral Process Shielding**: Sandboxed via systemd's `DynamicUser` configuration. The runner drops all Linux capabilities, restricts namespace creation, locks execution personalities, and runs with private mount configurations.
-*   **👤 Multi-User Dynamic Mounts**: Automatically creates and bind-mounts shared download queues and video folders into home directories on user login (`~/yt-dlp-backup/{conf,videos}`).
-*   **🚀 Automated Configuration (Recommended)**: Utilizes a native C++ utility (`vb_generator`) to generate all WireGuard configs, directories, and permissions, reload the systemd daemon, and enable/start the corresponding services from a single JSON profile sheet.
-*   **⚡ Shared Cache Reuse**: Safe concurrent caching of YouTube signature decryption rules, minimizing start times and duplicate network handshakes.
+*   **Secure Network Isolation**: The `yt-dlp` download process executes inside an isolated network namespace (`netns_X`) with all traffic routed exclusively through a WireGuard VPN tunnel. Host IP exposure and DNS leaks are mathematically impossible.
+*   **Ephemeral Process Shielding**: Sandboxed via systemd's `DynamicUser` configuration. The runner drops all Linux capabilities, restricts namespace creation, locks execution personalities, and runs with private mount configurations.
+*   **Multi-User Dynamic Mounts**: Automatically creates and bind-mounts shared download queues and video folders into home directories on user login (`~/yt-dlp-backup/{conf,videos}`).
+*   **Automated Configuration (Recommended)**: Utilizes a native C++ utility (`vb_generator`) to generate all WireGuard configs, directories, and permissions, reload the systemd daemon, and enable/start the corresponding services from a single JSON profile sheet.
+*   **Shared Cache Reuse**: Safe concurrent caching of YouTube signature decryption rules, minimizing start times and duplicate network handshakes.
 
 ---
 
