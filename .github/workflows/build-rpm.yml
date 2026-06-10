@@ -18,6 +18,8 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: fedora:latest
+    permissions:
+      contents: write
 
     steps:
       - name: Install build dependencies
@@ -61,3 +63,11 @@ jobs:
         with:
           name: yt-dlp-vpn-automation-rpm
           path: rpmbuild/RPMS/x86_64/*.rpm
+
+      - name: Create GitHub Release and Upload RPM
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: rpmbuild/RPMS/x86_64/*.rpm
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
