@@ -22,7 +22,7 @@ jobs:
     steps:
       - name: Install build dependencies
         run: |
-          dnf install -y git rpm-build gcc-c++ systemd-devel curl findutils
+          dnf install -y git rpm-build rpm-sign gcc-c++ systemd-devel curl findutils
 
       - name: Checkout repository
         uses: actions/checkout@v4
